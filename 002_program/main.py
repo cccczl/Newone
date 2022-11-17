@@ -37,8 +37,10 @@ keep_alive_message =b'a' #keep alive message
 time_of_disconnect =0 #for stopping motor and videostream when disconnected
 
 def sending_keepalive():#function, continuously sending keepalive messages, needed for stopping video stream and motors if disconected
-	if option_location == '1':kafz = 0.05 #keep alive frequency, ground station needs to send kav more often than vehicle
-	if option_location == '3':kafz = 1    #keep alive frequency, vehicle need to send kav more of than groundstation
+	if option_location == '1':
+		kafz = 0.05 #keep alive frequency, ground station needs to send kav more often than vehicle
+	elif option_location == '3':
+		kafz = 1    #keep alive frequency, vehicle need to send kav more of than groundstation
 	while run:
 		soc.sendto(keep_alive_message + password,address_server) # keepalive message, "a" stands for "alive", an indication
 		time.sleep(kafz)
@@ -52,8 +54,10 @@ def count_time_diconnect(): # function, count 'time of disconnect'
 	while run:time.sleep(0.05);time_of_disconnect+=1
 
 def controll_window_and_send_data():#creat a controll window and send controll data
-	import os; os.environ['PYGAME_HIDE_SUPPORT_PROMPT'] = 'hide' # annoying pygame support message
-	import pygame; pygame.init() #import and init pygame to draw
+	import os
+	os.environ['PYGAME_HIDE_SUPPORT_PROMPT'] = 'hide' # annoying pygame support message
+	import pygame
+	pygame.init() #import and init pygame to draw
 	print('controlling groud station running')
 	pygame.display.set_caption('controlling open-ats.eu')
 	screen = pygame.display.set_mode((500,500))#create window 500x500 pixel big
@@ -97,7 +101,7 @@ def controll_window_and_send_data():#creat a controll window and send controll d
 			svo_l = int(round(svo*300+1500))#left  servomotor
 			mtr_r = int(round(mtr*200+1500))#right drive motors
 			mtr_l = int(round(mtr*200+1500))#left  drive motors
-			soc.sendto(('d ' + str(svo_r) + ' ' + str(svo_l) + ' ' + str(mtr_r)+ ' ' + str(mtr_l)).encode(),address_server)
+			soc.sendto(f'd {svo_r} {svo_l} {mtr_r} {mtr_l}'.encode(), address_server)
 			print(f"sent:    svo_r:{svo_r}  svo_l:{svo_l}  mtr_r:{mtr_r}  mtr_l:{mtr_l}")#just for testing, will slow down a bit
 			screen.fill((0,0,0))
 			pygame.draw.rect(screen,(20,20,20),(49,248,400,2))#cross flat 249 is the half -1 cause its 2 thick
@@ -119,7 +123,7 @@ def receiv_and_display_video():#receiv image and display video
 		bytAry = bytearray()# byte array, where the image is saved
 		while True:# loop where the individual packages are put together to form the picture
 			part = soc.recvfrom(655350)[0] # wait for data to be received
-			if part[:1] == b'v' or part[:1] == b'f':
+			if part[:1] in [b'v', b'f']:
 				if part == b'f': # if no more data comes, an indication that the image ended
 					#print('image received') # dont use it to often, will slow down program
 					break  # breaks the loop 
@@ -206,24 +210,28 @@ def record_and_send_video(): # function, record_and_send_video_stream
 			jImg = cv2.imencode('.jpg', npImg, [int(cv2.IMWRITE_JPEG_QUALITY),90])[1]# numpy image to jpg
 			stream = io.BytesIO(jImg)# creating a stream to continously taking chunks from the jpg file
 			while run:
-				part = stream.read(504)# 506 is the max UDP package lengh, minus 2 for video authentification
-				if not part: break# if-block will execute if string is empty; breaks the loop
-				soc.sendto(b'v'+part,address_server)
+				if part := stream.read(504):
+					soc.sendto(b'v'+part,address_server)
+				else:
+					break# if-block will execute if string is empty; breaks the loop
 			soc.sendto(b'f', address_server)# indication end of image, "f" stand for "finished frame"
-			print('image sent ' + str(cnt))
+			print(f'image sent {cnt}')
 		else:print('no connection to ground station, videostream paused');time.sleep(3)
 
-if option_location == '1' or option_location == '3':#starting programme dependent which option was choosesn
+if option_location in ['1', '3']:#starting programme dependent which option was choosesn
 	threading.Thread(target = sending_keepalive).start() # starting function keep alive
-	if option_location == '1': # groundstation
-		if option_program == '1' or option_program == '2': threading.Thread(target = controll_window_and_send_data).start()
-		if option_program == '1' or option_program == '3': threading.Thread(target = receiv_and_display_video).start()
-	if option_location == '3': #vehicle
-		threading.Thread(target = receiving_keepalive).start()
-		threading.Thread(target = count_time_diconnect).start() # needed for both: save videodata, shutfdown motors
-		if option_program == '1' or option_program == '2': threading.Thread(target = receive_and_set_outputs).start()
-		if option_program == '1' or option_program == '3': threading.Thread(target = record_and_send_video).start()
+if option_location == '1': # groundstation
+	if option_program in ['1', '2']: threading.Thread(target = controll_window_and_send_data).start()
+	if option_program in ['1', '3']: threading.Thread(target = receiv_and_display_video).start()
+if option_location == '3': #vehicle
+	threading.Thread(target = receiving_keepalive).start()
+	threading.Thread(target = count_time_diconnect).start() # needed for both: save videodata, shutfdown motors
+	if option_program in ['1', '2']: threading.Thread(target = receive_and_set_outputs).start()
+	if option_program in ['1', '3']: threading.Thread(target = record_and_send_video).start()
 if option_location  == '2': threading.Thread(target = server).start()
 
-input();print("exit program");run = False; exit();
+input()
+print("exit program")
+run = False
+exit();
 # code maintained by Lukas Pfitscher & Spaltex (info@open-ats.eu)
